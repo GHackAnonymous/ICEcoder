@@ -19,11 +19,16 @@ $errorMsg = "None";
 $saveType = isset($_GET['saveType']) ? strClean($_GET['saveType']) : "";
 
 // Establish the filename/new filename
-$file = str_replace("|","/",strClean(
-	isset($_POST['newFileName']) && $_POST['newFileName']!=""
-	? $_POST['newFileName']
-	: $_REQUEST['file']
-	));
+if (isset($_POST['newFileName']) && $_POST['newFileName']!="") {
+	$file = $_POST['newFileName'];	// New file
+} elseif (isset($_REQUEST['file'])) {
+	$file = $_REQUEST['file'];	// Existing file
+} else {
+	$file = "";			// Error
+};
+
+// Replace pipes with slashes, after cleaning the chars
+$file = str_replace("|","/",strClean($file));
 
 // Establish the actual name as we may have HTML entities in filename
 $file = html_entity_decode($file);
@@ -94,7 +99,7 @@ if (!$error && $_GET['action']=="save") {
 			if (newFileName) {
 				if (newFileName.substr(0,1)!="/") {newFileName = "/" + newFileName};
 				newFileName = fileLoc + newFileName;
-				if (top.document.getElementById("filesFrame").contentWindow.document.getElementById(newFileName.replace(/\\\//g,"|"))) {
+				if (top.ICEcoder.filesFrame.contentWindow.document.getElementById(newFileName.replace(/\\\//g,"|"))) {
 					overwriteOK = top.ICEcoder.ask("'.$t['That file exists...'].'");
 				}
 			};
@@ -153,12 +158,25 @@ if (!$error && $_GET['action']=="save") {
 			if (!(isset($_GET['fileMDT']))||$filemtime==$_GET['fileMDT']) {
 				// Newly created files have the perms set too
 				$setPerms = (!file_exists($file)) ? true : false;
+				// get old file contents, if file exists, and count stats on usage \n and \r there
+				// in this case we can keep line endings, which file had before, without
+				// making code version control systems going crazy about line endings change in whole file. 
+				$oldContents = file_exists($file)?file_get_contents($file):'';
+				$unixNewLines = preg_match_all('/[^\r][\n]/u', $oldContents);
+				$windowsNewLines = preg_match_all('/[\r][\n]/u', $oldContents);
 				$fh = fopen($file, 'w') or die($t['Sorry, cannot save']);
 				// replace \r\n (Windows), \r (old Mac) and \n (Linux) line endings with whatever we chose to be lineEnding
 				$contents = $_POST['contents'];
 				$contents = str_replace("\r\n", $ICEcoder["lineEnding"], $contents);
 				$contents = str_replace("\r", $ICEcoder["lineEnding"], $contents);
 				$contents = str_replace("\n", $ICEcoder["lineEnding"], $contents);
+				if (($unixNewLines > 0) || ($windowsNewLines > 0)){
+					if ($unixNewLines > $windowsNewLines){
+						$contents = str_replace($ICEcoder["lineEnding"], "\n", $contents);
+					} elseif ($windowsNewLines > $unixNewLines){
+						$contents = str_replace($ICEcoder["lineEnding"], "\r\n", $contents);
+					}
+				}
 				// Now write that content, close the file and clear the statcache
 				fwrite($fh, $contents);
 				fclose($fh);
@@ -394,12 +412,19 @@ if (!$error && $_GET['action']=="upload") {
 		$doNext = "";
 		class fileUploader {  
 			public function __construct($uploads) {
-				global $docRoot,$iceRoot,$doNext;
+				global $docRoot,$iceRoot,$ICEcoder,$doNext;
 				$uploadDir=$docRoot.$iceRoot.str_replace("..","",str_replace("|","/",strClean($_POST['folder'])."/"));
 				foreach($uploads as $current) {  
 					$this->uploadFile=$uploadDir.$current->name;
 					$fileName = $current->name;
-					if ($this->upload($current,$this->uploadFile)) {
+					// Get & set existing perms for existing files, or set to newFilePerms setting for new files
+                                        if (file_exists($this->uploadFile)) {
+                                                $chmodInfo = substr(sprintf('%o', fileperms($this->uploadFile)), -4);
+                                                $setPerms = substr($chmodInfo,1,3); // reduces 0755 down to 755
+                                        } else {
+                                                $setPerms = $ICEcoder['newFilePerms'];
+                                        }
+					if ($this->upload($current,$this->uploadFile,$setPerms)) {
 						$doNext .= 'top.ICEcoder.updateFileManagerList(\'add\',top.ICEcoder.selectedFiles[top.ICEcoder.selectedFiles.length-1].replace(/\|/g,\'/\'),\''.str_replace("'","\'",$fileName).'\',false,false,true,\'file\'); top.ICEcoder.serverMessage("'.$t['Uploaded file(s) OK'].'");setTimeout(function(){top.ICEcoder.serverMessage();},2000);';
 						$finalAction = "upload";
 					} else {
@@ -409,8 +434,9 @@ if (!$error && $_GET['action']=="upload") {
 				}  
 			}  
 
-			public function upload($current,$uploadFile){ 
+			public function upload($current,$uploadFile,$setPerms){ 
 				if(move_uploaded_file($current->tmp_name,$uploadFile)){
+					chmod($uploadFile,octdec($setPerms));
 					return true;  
 				}  
 			}  
@@ -520,6 +546,7 @@ if (!$error && $_GET['action']=="replaceText") {
 // ==========================
 
 if (!$error && $_GET['action']=="getRemoteFile") {
+	$lineNumber = max(isset($_REQUEST['lineNumber'])?intval($_REQUEST['lineNumber']):1, 1);
 	$doNext = "";
 	if ($remoteFile = toUTF8noBOM(file_get_contents($file,false,$context),true)) {
 		// replace \r\n (Windows), \r (old Mac) and \n (Linux) line endings with whatever we chose to be lineEnding
@@ -528,6 +555,7 @@ if (!$error && $_GET['action']=="getRemoteFile") {
 		$remoteFile = str_replace("\n", $ICEcoder["lineEnding"], $remoteFile);
 		$doNext .= 'top.ICEcoder.newTab();';
 		$doNext .= 'top.ICEcoder.getcMInstance().setValue(\''.str_replace("\r","",str_replace("\t","\\\\t",str_replace("\n","\\\\n",str_replace("'","\\\\'",str_replace("\\","\\\\",preg_quote($remoteFile)))))).'\');';
+		$doNext .= 'top.ICEcoder.goToLine('.$lineNumber.');';
 		$finalAction = "getRemoteFile";
 		// Run our custom processes
 		include_once("../processes/on-get-remote-file.php");
@@ -563,6 +591,11 @@ if (!$error && $_GET['action']=="perms") {
 // ===================
 // JSON DATA TO RETURN
 // ===================
+
+// No $filemtime yet? Get it now!
+if (!isset($filemtime)) {
+	$filemtime = $serverType=="Linux" ? filemtime($file) : "1000000";
+}
 
 echo '{
 	"file": {

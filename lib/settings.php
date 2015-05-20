@@ -3,6 +3,35 @@
 $configSettings = 'config___settings.php';
 $configUsersTemplate = 'config___users-template.php';
 
+// Create a new config file if it doesn't exist yet.
+// The reason we create it, is so it has PHP write permissions, meaning we can update it later
+if (!file_exists(dirname(__FILE__)."/".$configSettings)) {
+$newConfigSettingsFile = '<?php
+// ICEcoder system settings
+$ICEcoderSettings = array(
+	"versionNo"		=> "5.0",
+	"codeMirrorDir"		=> "CodeMirror",
+	"docRoot"		=> $_SERVER[\'DOCUMENT_ROOT\'],	// Set absolute path of another location if needed
+	"demoMode"		=> false,
+	"devMode"		=> false,
+	"fileDirResOutput"	=> "none",			// Can be none, raw, object, both (all but \'none\' output to console)
+	"loginRequired"		=> true,
+	"multiUser"		=> false,
+	"languageBase"		=> "english.php",
+	"lineEnding"		=> "\n",
+	"newDirPerms"		=> 755,
+	"newFilePerms"		=> 644,
+	"enableRegistration"	=> true
+);
+?>';
+	if ($fConfigSettings = fopen(dirname(__FILE__)."/".$configSettings, 'w')) {
+		fwrite($fConfigSettings, $newConfigSettingsFile);
+		fclose($fConfigSettings);
+	} else {
+		die("Cannot update config file lib/".$configSettings.". Please check write permissions on lib/ and try again");
+	}
+}
+
 // Load config settings
 include(dirname(__FILE__)."/".$configSettings);
 
@@ -45,6 +74,12 @@ if (basename($_SERVER['SCRIPT_NAME']) == "index.php" && $ICEcoderUserSettings['c
 	$settingsContents = file_get_contents(dirname(__FILE__)."/".$settingsFile,false,$context);
 	clearstatcache();
 	$configfilemtime = filemtime(dirname(__FILE__)."/"."config___settings.php");
+	// Make it a number (avoids null, undefined etc)
+	$configfilemtime = intval($configfilemtime);
+	// Set it to the epoch time now if we don't have a real value
+	if ($configfilemtime == 0) {
+		$configfilemtime = time();
+	}
 	$settingsContents = str_replace('"configCreateDate"	=> 0,','"configCreateDate"	=> '.$configfilemtime.',',$settingsContents);
 	// Now update the config file
 	$fh = fopen(dirname(__FILE__)."/".$settingsFile, 'w') or die("Can't update config file. Please set public write permissions on ".$settingsFile." and press refresh");
@@ -106,6 +141,7 @@ if (!isset($_SESSION['username'])) {$_SESSION['username'] = false;};
 if(isset($_POST['submit']) && $setPWorLogin=="login") {
 	// On success, set username if multiUser, loggedIn to true and redirect
 	if (generateHash(strClean($_POST['password']),$ICEcoder["password"])==$ICEcoder["password"]) {
+		session_regenerate_id();
 		if ($ICEcoder["multiUser"]) {
 			$_SESSION['username'] = $_POST['username'];
 		}
