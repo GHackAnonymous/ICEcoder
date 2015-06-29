@@ -20,6 +20,8 @@ $text = array(
 		"your device"			=> "your device",
 		"Browser"			=> "Browser:",
 		"Your IP"			=> "Your IP:",
+		"trial remaining"		=> "trial remaining",
+		"days left"			=> "days left",
 		"files"				=> "files",
 		"Last 10 files..."		=> "Last 10 files opened:",
 		"none"				=> "[none]",
@@ -117,6 +119,7 @@ $text = array(
 
 	"file-control" =>
 	array(
+		"Sorry, bad filename..."	=> "Sorry, bad filename provided. Check the dev tools console for more info?",
 		"Sorry"				=> "Sorry",
 		"does not seem..."		=> "does not seem to exist on the server",
 		"Sorry, could not..."		=> "Sorry, could not get contents of",
@@ -238,6 +241,7 @@ $text = array(
 		"Close current tab"		=> "Close current tab",
 		"Open file prompt"		=> "Open file prompt",
 		"Find"				=> "Find",
+		"Previous"			=> "Previous",
 		"Focus on Go..."		=> "Focus on Go to line input",
 		"Save"				=> "Save",
 		"Save as"			=> "Save as...",
